@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DDS wasm spike</title>
+<style>body{font:14px/1.4 -apple-system,sans-serif;margin:12px}pre{white-space:pre-wrap;background:#f4f4f4;padding:8px;border-radius:6px}button{font-size:16px;padding:8px 14px}</style>
+</head>
+<body>
+<h3>DDS wasm spike</h3>
+<button id="run" disabled>Run</button>
+<pre id="log">loading dds.js ...</pre>
+
+<script>var T0 = performance.now();</script>
+<script src="dds.js"></script>
+<script>
+(function () {
+  var log = document.getElementById('log');
+  function say(s) { log.textContent += '\n' + s; }
+
+  // [label, hands "N E S W" (S.H.D.C), trump 0-4 (4=NT), leader 0-3 (0=N), current trick]
+  var DEALS = [
+    ['Trick 1, 13 cards, NT, W leads',
+     'AKQ.KQ5.AJ4.KQ32 T987.T98.T98.JT9 J32.AJ4.KQ5.A654 654.7632.7632.87', 4, 3, ''],
+    ['Mid-hand (10/9/10/10 cards), NT, N led SK, E played S8, S to play',
+     'A.KQ5.J4.KQ3 T9.T98.T9.JT 32.AJ4.KQ.654 65.7632.763.7', 4, 0, 'SK S8'],
+    ['Endgame (4 cards each), NT, E leads',
+     'AQ.K.4. 98.T.T. 32.A.K. 65.7.7.', 4, 1, '']
+  ];
+
+  DDSModule().then(function (M) {
+    say('module ready after ' + (performance.now() - T0).toFixed(0) + ' ms (script start -> ready)');
+    var init = M.cwrap('dds_init', null, []);
+    var best = M.cwrap('best_cards', 'string', ['string', 'number', 'number', 'string']);
+
+    var t = performance.now();
+    init();
+    say('dds_init: ' + (performance.now() - t).toFixed(1) + ' ms');
+    say(navigator.userAgent);
+
+    var btn = document.getElementById('run');
+    btn.disabled = false;
+    btn.onclick = function () {
+      btn.disabled = true;
+      say('\n--- run (UI will freeze during each call; no worker in this spike) ---');
+      // let the "freeze" message paint first
+      setTimeout(function () {
+        DEALS.forEach(function (d) {
+          var times = [], res = '';
+          for (var i = 0; i < 3; i++) {
+            var a = performance.now();
+            res = best(d[1], d[2], d[3], d[4]);
+            times.push((performance.now() - a).toFixed(1));
+          }
+          var j = JSON.parse(res);
+          say('\n' + d[0] + '\n  ms per call (cold, 2nd, 3rd): ' + times.join(' / ') +
+              '\n  rc=' + j.rc + ' nodes=' + j.nodes +
+              '\n  ' + (j.cards ? j.cards.map(function (c) { return c.c + '=' + c.t + (c.eq ? '~' : ''); }).join(' ') : j.err));
+        });
+        say('\n(t = tricks for side to move from here; ~ = equivalent card)');
+        say('Note: Safari rounds performance.now() to ~1 ms.');
+        btn.disabled = false;
+      }, 50);
+    };
+  }).catch(function (e) { say('LOAD ERROR: ' + e); });
+})();
+</script>
+</body>
+</html>
